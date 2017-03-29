@@ -1,0 +1,8 @@
+{
+  "name": "`ili File Server",
+  "description": "A small server to retrieve input files for the `ili app",
+  "image": "heroku/python",
+  "repository": "https://github.com/iprotsyuk/file_server",
+  "keywords": ["python"],
+  "addons": []
+}
