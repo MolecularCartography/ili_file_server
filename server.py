@@ -40,6 +40,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _stream_local_file(self, file_path):
         self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Content-Type', Handler._detect_mime_type(file_path))
         self.send_header('Content-Length', file_path.stat().st_size)
         self.send_header('Content-Disposition', 'attachment; filename=%s' % file_path.name)
@@ -50,6 +51,7 @@ class Handler(BaseHTTPRequestHandler):
     def _stream_external_file(self, file_url):
         request = urlopen(url=file_url, timeout=REMOTE_REQUEST_TIMEOUT_S)
         self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
         for key, value in request.headers.items():
             self.send_header(key, value)
         if not request.headers.get_content_disposition():
