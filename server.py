@@ -2,12 +2,14 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path, PurePath
 from urllib.request import urlopen
 from urllib.parse import urlsplit
+from os import environ
 import sys
 
 
 LOCAL_DATA_DIR = Path('.') / 'data'
 DATA_CHUNK_BYTES = 16384
 REMOTE_REQUEST_TIMEOUT_S = 30
+ENV_PORT_NAME = 'PORT'
 DEFAULT_PORT_NUMBER = 8080
 QUERY_SEP = '?'
 
@@ -89,8 +91,8 @@ class Handler(BaseHTTPRequestHandler):
 
 
 try:
-    port = DEFAULT_PORT_NUMBER
-    if len(sys.argv) > 1:
+    port = int(environ.get(ENV_PORT_NAME, DEFAULT_PORT_NUMBER))
+    if not ENV_PORT_NAME in environ.keys() and len(sys.argv) > 1:
         port = int(sys.argv[1])
     server = HTTPServer(('', port), Handler)
     print('Started HTTP server on port %d' % port)
