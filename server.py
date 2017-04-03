@@ -93,13 +93,28 @@ class WebRequestHandler(BaseHTTPRequestHandler):
 
     def _send_headers_for_external_file(self, remote_response):
         self.send_response(200)
-        self.send_header('Access-Control-Allow-Origin', '*')
         for key, value in remote_response.headers.items():
             self.send_header(key, value)
-        if not remote_response.headers.get_content_disposition():
-            remote_path = PurePath(urlsplit(remote_response.url).path)
-            self.send_header('Content-Disposition', 'attachment; filename=%s' % remote_path.name)
+        self._send_missing_headers_for_external_file(remote_response)
         self.end_headers()
+
+    def _send_content_disposition_header(self, remote_response, header_name):
+        remote_path = PurePath(urlsplit(remote_response.url).path)
+        self.send_header(header_name, 'attachment; filename=%s' % remote_path.name)
+
+    def _send_cors_header(self, remote_response, header_name):
+        self.send_header(header_name, '*')
+
+    def _send_missing_headers_for_external_file(self, remote_response):
+        missing_header_handlers = {
+            'Content-Disposition': self._send_content_disposition_header,
+            'Access-Control-Allow-Origin': self._send_cors_header
+        }
+
+        existing_keys = set([key.lower() for key in remote_response.headers.keys()])
+        for header in missing_header_handlers:
+            if not header.lower() in existing_keys:
+                missing_header_handlers[header](remote_response, header)
 
     def _get_requested_file_url(self):
         try:
