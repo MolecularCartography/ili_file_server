@@ -3,6 +3,7 @@ from pathlib import Path, PurePath
 from urllib.request import urlopen
 from urllib.parse import urlsplit
 from os import environ
+from socketserver import ThreadingMixIn
 from sys import argv
 from tarfile import TarFile
 from tempfile import TemporaryFile
@@ -17,7 +18,11 @@ DEFAULT_PORT_NUMBER = 8080
 QUERY_SEP = '?'
 
 
-class Handler(BaseHTTPRequestHandler):
+class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
+    pass
+
+
+class WebRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         requested_file_url = self._get_requested_file_url()
         if not requested_file_url:
@@ -81,7 +86,7 @@ class Handler(BaseHTTPRequestHandler):
     def _send_headers_for_local_file(self, file_name, file_size):
         self.send_response(200)
         self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Content-Type', Handler._detect_mime_type(file_name))
+        self.send_header('Content-Type', WebRequestHandler._detect_mime_type(file_name))
         self.send_header('Content-Length', file_size)
         self.send_header('Content-Disposition', 'attachment; filename=%s' % file_name)
         self.end_headers()
@@ -131,7 +136,7 @@ try:
     port = int(environ.get(ENV_PORT_NAME, DEFAULT_PORT_NUMBER))
     if not ENV_PORT_NAME in environ.keys() and len(argv) > 1:
         port = int(argv[1])
-    server = HTTPServer(('', port), Handler)
+    server = ThreadedHTTPServer(('', port), WebRequestHandler)
     print('Started HTTP server on port %d' % port)
     server.serve_forever()
 except KeyboardInterrupt:
