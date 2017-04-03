@@ -16,6 +16,7 @@ REMOTE_REQUEST_TIMEOUT_S = 30
 ENV_PORT_NAME = 'PORT'
 DEFAULT_PORT_NUMBER = 8080
 QUERY_SEP = '?'
+DEFAULT_FILE_TYPE = 'application/octet-stream'
 
 
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
@@ -92,29 +93,51 @@ class WebRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _send_headers_for_external_file(self, remote_response):
+        header_handlers = {
+            'Content-Type': WebRequestHandler._get_content_type_header
+        }
+        header_handler_keys = {key.lower(): key for key in header_handlers}
+
         self.send_response(200)
         for key, value in remote_response.headers.items():
+            if key.lower() in header_handler_keys:
+                value = header_handlers[header_handler_keys[key.lower()]](remote_response)
             self.send_header(key, value)
         self._send_missing_headers_for_external_file(remote_response)
         self.end_headers()
 
-    def _send_content_disposition_header(self, remote_response, header_name):
+    @staticmethod
+    def _get_content_type_header(remote_response):
         remote_path = PurePath(urlsplit(remote_response.url).path)
-        self.send_header(header_name, 'attachment; filename=%s' % remote_path.name)
+        proposed_content_type = remote_response.headers.get_content_type()
+        deduced_content_type = WebRequestHandler._detect_mime_type(remote_path.name)
+        return deduced_content_type if deduced_content_type != proposed_content_type and deduced_content_type != DEFAULT_FILE_TYPE else proposed_content_type
 
-    def _send_cors_header(self, remote_response, header_name):
-        self.send_header(header_name, '*')
+    @staticmethod
+    def _get_content_disposition_header(remote_response):
+        remote_path = PurePath(urlsplit(remote_response.url).path)
+        return 'attachment; filename=%s' % remote_path.name
+
+    @staticmethod
+    def _get_cors_header(remote_response):
+        return '*'
+
+    @staticmethod
+    def _get_content_length_header(remote_response):
+        return remote_response.length
 
     def _send_missing_headers_for_external_file(self, remote_response):
         missing_header_handlers = {
-            'Content-Disposition': self._send_content_disposition_header,
-            'Access-Control-Allow-Origin': self._send_cors_header
+            'Content-Type': WebRequestHandler._get_content_type_header,
+            'Content-Disposition': WebRequestHandler._get_content_disposition_header,
+            'Access-Control-Allow-Origin': WebRequestHandler._get_cors_header,
+            'Content-Length': WebRequestHandler._get_content_length_header
         }
 
         existing_keys = set([key.lower() for key in remote_response.headers.keys()])
         for header in missing_header_handlers:
             if not header.lower() in existing_keys:
-                missing_header_handlers[header](remote_response, header)
+                self.send_header(header, missing_header_handlers[header](remote_response))
 
     def _get_requested_file_url(self):
         try:
@@ -143,7 +166,7 @@ class WebRequestHandler(BaseHTTPRequestHandler):
         elif file_name.endswith('.json'):
             mimetype = 'application/json'
         else:
-            mimetype = 'application/octet-stream'
+            mimetype = DEFAULT_FILE_TYPE
         return mimetype
 
 
