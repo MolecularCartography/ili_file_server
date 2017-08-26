@@ -7,6 +7,7 @@ from socketserver import ThreadingMixIn
 from sys import argv
 from tarfile import TarFile
 from tempfile import TemporaryFile
+from traceback import print_exc
 from zipfile import ZipFile
 
 
@@ -42,6 +43,7 @@ class WebRequestHandler(BaseHTTPRequestHandler):
             else:
                 self._stream_external_file(requested_file_url)
         except ConnectionError as e:
+            print_exc()
             print('Connection error: %s' % e.strerror)
         except Exception as e:
             error_text = str(e)
