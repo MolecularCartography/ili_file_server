@@ -124,16 +124,11 @@ class WebRequestHandler(BaseHTTPRequestHandler):
     def _get_cors_header(remote_response):
         return '*'
 
-    @staticmethod
-    def _get_content_length_header(remote_response):
-        return remote_response.length
-
     def _send_missing_headers_for_external_file(self, remote_response):
         missing_header_handlers = {
             'Content-Type': WebRequestHandler._get_content_type_header,
             'Content-Disposition': WebRequestHandler._get_content_disposition_header,
             'Access-Control-Allow-Origin': WebRequestHandler._get_cors_header,
-            'Content-Length': WebRequestHandler._get_content_length_header
         }
 
         existing_keys = set([key.lower() for key in remote_response.headers.keys()])
