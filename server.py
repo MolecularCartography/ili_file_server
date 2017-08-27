@@ -1,7 +1,7 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path, PurePath
 from urllib.request import urlopen
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, unquote
 from os import environ
 from socketserver import ThreadingMixIn
 from sys import argv
@@ -144,7 +144,7 @@ class WebRequestHandler(BaseHTTPRequestHandler):
     def _get_requested_file_url(self):
         try:
             query_sep_pos = self.path.index(QUERY_SEP)
-            return self.path[query_sep_pos + 1:]
+            return unquote(self.path[query_sep_pos + 1:])
         except ValueError as e:
             return str()
 
