@@ -1,12 +1,13 @@
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path, PurePath
 from urllib.request import urlopen
-from urllib.parse import urlsplit
+from urllib.parse import quote, unquote, urlsplit
 from os import environ
 from socketserver import ThreadingMixIn
 from sys import argv
 from tarfile import TarFile
 from tempfile import TemporaryFile
+from traceback import print_exc
 from zipfile import ZipFile
 
 
@@ -24,6 +25,8 @@ class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
 
 
 class WebRequestHandler(BaseHTTPRequestHandler):
+    protocol_version = 'HTTP/1.1'
+
     def do_GET(self):
         requested_file_url = self._get_requested_file_url()
         if not requested_file_url:
@@ -43,9 +46,11 @@ class WebRequestHandler(BaseHTTPRequestHandler):
                 self._stream_external_file(requested_file_url)
         except ConnectionError as e:
             print('Connection error: %s' % e.strerror)
+            WebRequestHandler._print_stack_trace()
         except Exception as e:
             error_text = str(e)
             self.send_error(e.code if hasattr(e, 'code') else 404, error_text if error_text else 'Problem with accessing file: %s' % requested_file_url)
+            WebRequestHandler._print_stack_trace()
 
     def _stream_local_file(self, file_path):
         self._send_headers_for_local_file(file_path.name, file_path.stat().st_size)
@@ -61,8 +66,9 @@ class WebRequestHandler(BaseHTTPRequestHandler):
         elif file_type == 'application/x-tar':
             self._stream_tarred_data(response.read())
         else:
-            self._send_headers_for_external_file(response)
-            self._stream_file(response)
+            headers = self._send_headers_for_external_file(response)
+            content_chunked = WebRequestHandler._is_chunked_transmission(headers)
+            self._stream_file(response, content_chunked)
 
     def _stream_zipped_data(self, data):
         with TemporaryFile() as archive_file:
@@ -93,6 +99,8 @@ class WebRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def _send_headers_for_external_file(self, remote_response):
+        headers = {}
+
         header_handlers = {
             'Content-Type': WebRequestHandler._get_content_type_header
         }
@@ -103,8 +111,20 @@ class WebRequestHandler(BaseHTTPRequestHandler):
             if key.lower() in header_handler_keys:
                 value = header_handlers[header_handler_keys[key.lower()]](remote_response)
             self.send_header(key, value)
-        self._send_missing_headers_for_external_file(remote_response)
+            headers[key] = value
+        missing_headers = self._send_missing_headers_for_external_file(remote_response)
+        headers.update(missing_headers)
         self.end_headers()
+        return headers
+
+    @staticmethod
+    def _print_stack_trace():
+        print('\nStack trace:\n')
+        print_exc()
+
+    @staticmethod
+    def _is_chunked_transmission(headers):
+        return any(h.lower() == 'transfer-encoding' and v.lower() == 'chunked' for h, v in headers.items())
 
     @staticmethod
     def _get_content_type_header(remote_response):
@@ -122,36 +142,42 @@ class WebRequestHandler(BaseHTTPRequestHandler):
     def _get_cors_header(remote_response):
         return '*'
 
-    @staticmethod
-    def _get_content_length_header(remote_response):
-        return remote_response.length
-
     def _send_missing_headers_for_external_file(self, remote_response):
         missing_header_handlers = {
             'Content-Type': WebRequestHandler._get_content_type_header,
             'Content-Disposition': WebRequestHandler._get_content_disposition_header,
             'Access-Control-Allow-Origin': WebRequestHandler._get_cors_header,
-            'Content-Length': WebRequestHandler._get_content_length_header
         }
+        headers = {}
 
         existing_keys = set([key.lower() for key in remote_response.headers.keys()])
         for header in missing_header_handlers:
             if not header.lower() in existing_keys:
-                self.send_header(header, missing_header_handlers[header](remote_response))
+                value = missing_header_handlers[header](remote_response)
+                self.send_header(header, value)
+                headers[header] = value
+        return headers
 
     def _get_requested_file_url(self):
         try:
             query_sep_pos = self.path.index(QUERY_SEP)
-            return self.path[query_sep_pos + 1:]
+            requested_url = self.path[query_sep_pos + 1:]
+            url_parts = urlsplit(unquote(requested_url))
+            scheme = url_parts.scheme + '://' if url_parts.scheme else url_parts.scheme
+            query = '?' + url_parts.query if url_parts.query else url_parts.query
+            return ''.join((scheme, url_parts.netloc, quote(url_parts.path), query))
         except ValueError as e:
             return str()
 
-    def _stream_file(self, file_handler):
+    def _stream_file(self, file_handler, chunked_transmission=False):
         while True:
             data = file_handler.read(DATA_CHUNK_BYTES)
             if data:
-                self.wfile.write(data)
+                payload = b'%X\r\n%s\r\n' % (len(data), data) if chunked_transmission else data
+                self.wfile.write(payload)
             else:
+                if chunked_transmission:
+                    self.wfile.write(b'0\r\n\r\n')
                 break
 
     @staticmethod
